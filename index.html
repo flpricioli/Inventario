@@ -272,35 +272,37 @@
 
 <script>
 
-// ─── Função central de chamada ao Apps Script ─────────────────────────────
-// Usa fetch com redirect:follow para lidar com o redirect do GAS
-async function gasGet(params) {
-  const qs = Object.entries(params)
-    .map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
-    .join('&');
-  const url = GAS_URL + '?' + qs;
+// ─── Chamada ao Apps Script via JSONP (resolve CORS) ─────────────────────
+function gasGet(params) {
+  return new Promise(function(resolve, reject) {
+    const cbName = 'cb_' + Date.now();
+    params.callback = cbName;
 
-  const resp = await fetch(url, {
-    method: 'GET',
-    redirect: 'follow'
+    const qs = Object.entries(params)
+      .map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+      .join('&');
+
+    window[cbName] = function(data) {
+      delete window[cbName];
+      document.head.removeChild(script);
+      resolve(data);
+    };
+
+    const script = document.createElement('script');
+    script.src = GAS_URL + '?' + qs;
+    script.onerror = function() {
+      delete window[cbName];
+      document.head.removeChild(script);
+      reject(new Error('Falha ao conectar com o Apps Script'));
+    };
+    document.head.appendChild(script);
   });
-
-  // GAS às vezes retorna text/html no redirect — tentar json mesmo assim
-  const text = await resp.text();
-  try {
-    return JSON.parse(text);
-  } catch(e) {
-    // Tentar extrair JSON embutido em HTML (redirect page)
-    const match = text.match(/\{.*\}/s);
-    if (match) return JSON.parse(match[0]);
-    throw new Error('Resposta inesperada do servidor: ' + text.slice(0, 200));
-  }
 }
 
 // ═══════════════════════════════════════════════════════════
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════
-let GAS_URL      = 'https://script.google.com/macros/s/AKfycbzbAUM4alZ4KeMq8Z-g_TQcaVaFj2w0XqqgSIazXjtQO_w3tMa4fKGVkWFf2iZD5_k0FA/exec';
+let GAS_URL      = 'https://script.google.com/macros/s/AKfycbxnmywl4eCoq8QmhK9YldWBNGVJCD0_5fKPPRaTociYi-qMKb9nqVy5Y38VVJjfuCpdlg/exec';
 let operador     = '';
 let invId        = '';
 let dataInicio   = null;
