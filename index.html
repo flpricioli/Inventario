@@ -300,7 +300,7 @@ async function gasGet(params) {
 // ═══════════════════════════════════════════════════════════
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════
-let GAS_URL      = '';
+let GAS_URL      = 'https://script.google.com/macros/s/AKfycbzbAUM4alZ4KeMq8Z-g_TQcaVaFj2w0XqqgSIazXjtQO_w3tMa4fKGVkWFf2iZD5_k0FA/exec';
 let operador     = '';
 let invId        = '';
 let dataInicio   = null;
@@ -338,17 +338,7 @@ function gerarInvId() {
 // CONFIG
 // ═══════════════════════════════════════════════════════════
 window.onload = function() {
-  const saved = localStorage.getItem('gas_url');
-  if (saved && saved.startsWith('https://script.google.com')) {
-    GAS_URL = saved;
-    document.getElementById('cfg-url').value = saved;
-    const prev = document.getElementById('url-preview');
-    if (prev) prev.textContent = saved;
-    mostrarTela('screen-login');
-  } else {
-    localStorage.removeItem('gas_url');
-    mostrarTela('screen-config');
-  }
+  mostrarTela('screen-login');
 };
 
 function salvarConfig() {
