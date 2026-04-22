@@ -222,29 +222,45 @@
     <!-- MODO CAIXA (DUN) -->
     <div id="modo-caixa" style="display:none;margin-top:12px;">
       <div style="background:#FEF3E2;border:2px solid #E67E22;border-radius:10px;padding:12px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
           <span style="font-size:1.3rem;">📦</span>
           <span style="font-weight:700;color:#E67E22;font-size:.95rem;">Leitura de CAIXA</span>
           <span id="pf-fator-badge" style="background:#E67E22;color:#fff;border-radius:20px;padding:2px 10px;font-size:.8rem;font-weight:700;">×1</span>
         </div>
 
+        <!-- Nº de caixas -->
         <label style="font-size:.82rem;color:#666;margin-bottom:4px;display:block;">Nº de caixas</label>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
           <button class="btn btn-outline btn-sm" onclick="ajustarCaixas(-1)">−</button>
-          <input type="number" id="caixas-input" min="1" value="1"
+          <input type="number" id="caixas-input" min="0" value="1"
                  style="width:70px;text-align:center;font-size:1.2rem;font-weight:700;"
                  oninput="atualizarConversao()"/>
           <button class="btn btn-outline btn-sm" onclick="ajustarCaixas(1)">+</button>
         </div>
 
-        <div style="background:#fff;border-radius:8px;padding:10px;text-align:center;margin-bottom:10px;">
-          <span id="formula-caixas" style="font-size:1rem;color:#555;"></span>
-          <span style="margin:0 8px;color:#ccc;">→</span>
-          <span id="resultado-caixas" style="font-size:1.5rem;font-weight:900;color:#1B4F72;"></span>
-          <span style="font-size:.8rem;color:#888;margin-left:4px;">unidades</span>
+        <!-- Divisor -->
+        <div style="border-top:1px dashed #E67E22;margin-bottom:12px;"></div>
+
+        <!-- Nº de itens isolados -->
+        <label style="font-size:.82rem;color:#666;margin-bottom:4px;display:block;">Nº de itens isolados</label>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+          <button class="btn btn-outline btn-sm" onclick="ajustarIsolados(-1)">−</button>
+          <input type="number" id="isolados-input" min="0" value="0"
+                 style="width:70px;text-align:center;font-size:1.2rem;font-weight:700;"
+                 oninput="atualizarConversao()"/>
+          <button class="btn btn-outline btn-sm" onclick="ajustarIsolados(1)">+</button>
         </div>
 
-        <button class="btn btn-success" onclick="confirmarItem()" style="width:100%;">✔ Confirmar</button>
+        <!-- Resultado -->
+        <div style="background:#fff;border-radius:8px;padding:12px;text-align:center;margin-bottom:12px;border:1px solid #f0d0b0;">
+          <div style="font-size:.85rem;color:#888;margin-bottom:4px;" id="formula-caixas"></div>
+          <div style="display:flex;align-items:baseline;justify-content:center;gap:6px;">
+            <span id="resultado-caixas" style="font-size:2rem;font-weight:900;color:#1B4F72;"></span>
+            <span style="font-size:.9rem;color:#888;">unidades</span>
+          </div>
+        </div>
+
+        <button class="btn btn-success" onclick="confirmarItem()" style="width:100%;font-size:1rem;padding:12px;">✔ Confirmar</button>
       </div>
     </div>
   </div>
@@ -466,7 +482,8 @@ function processarCodigo(codigo) {
     document.getElementById('modo-unidade').style.display = 'none';
     document.getElementById('modo-caixa').style.display   = 'block';
     document.getElementById('pf-fator-badge').textContent = '×' + fator;
-    document.getElementById('caixas-input').value = 1;
+    document.getElementById('caixas-input').value   = 1;
+    document.getElementById('isolados-input').value = 0;
     atualizarConversao();
     document.getElementById('scan-status').textContent = '📦 Caixa encontrada! ×' + fator;
     document.getElementById('caixas-input').focus();
@@ -498,16 +515,35 @@ function ajustarQtd(delta) {
 
 function ajustarCaixas(delta) {
   const inp = document.getElementById('caixas-input');
-  inp.value = Math.max(1, parseInt(inp.value || 1) + delta);
+  inp.value = Math.max(0, parseInt(inp.value || 0) + delta);
+  atualizarConversao();
+}
+
+function ajustarIsolados(delta) {
+  const inp = document.getElementById('isolados-input');
+  inp.value = Math.max(0, parseInt(inp.value || 0) + delta);
   atualizarConversao();
 }
 
 function atualizarConversao() {
   if (!produtoAtual) return;
-  const fator  = Number(produtoAtual.fator) || 1;
-  const caixas = parseInt(document.getElementById('caixas-input').value) || 1;
-  const total  = caixas * fator;
-  document.getElementById('formula-caixas').textContent  = caixas + ' × ' + fator;
+  const fator    = Number(produtoAtual.fator) || 1;
+  const caixas   = parseInt(document.getElementById('caixas-input').value)   || 0;
+  const isolados = parseInt(document.getElementById('isolados-input').value) || 0;
+  const total    = (caixas * fator) + isolados;
+
+  let formula = '';
+  if (caixas > 0 && isolados > 0) {
+    formula = '(' + caixas + ' × ' + fator + ')' + ' + ' + isolados + ' isolado' + (isolados > 1 ? 's' : '');
+  } else if (caixas > 0) {
+    formula = caixas + ' × ' + fator;
+  } else if (isolados > 0) {
+    formula = isolados + ' isolado' + (isolados > 1 ? 's' : '');
+  } else {
+    formula = '0';
+  }
+
+  document.getElementById('formula-caixas').textContent   = formula;
   document.getElementById('resultado-caixas').textContent = total;
 }
 
@@ -515,9 +551,10 @@ function confirmarItem() {
   if (!produtoAtual) return;
   let qtd;
   if (isDUN) {
-    const fator  = Number(produtoAtual.fator) || 1;
-    const caixas = parseInt(document.getElementById('caixas-input').value) || 1;
-    qtd = caixas * fator;
+    const fator    = Number(produtoAtual.fator) || 1;
+    const caixas   = parseInt(document.getElementById('caixas-input').value)   || 0;
+    const isolados = parseInt(document.getElementById('isolados-input').value) || 0;
+    qtd = (caixas * fator) + isolados;
   } else {
     qtd = parseInt(document.getElementById('qtd-input').value) || 0;
   }
@@ -536,6 +573,8 @@ function confirmarItem() {
   document.getElementById('prod-found').style.display   = 'none';
   document.getElementById('modo-unidade').style.display = 'block';
   document.getElementById('modo-caixa').style.display   = 'none';
+  document.getElementById('caixas-input').value   = 1;
+  document.getElementById('isolados-input').value = 0;
   document.getElementById('scan-status').textContent = 'Aponte a câmera para o próximo produto';
   document.getElementById('scan-status').className = 'scan-status info';
   renderLista();
