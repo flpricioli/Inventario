@@ -206,8 +206,9 @@
     <div class="field">📦 <span id="pf-sku"></span></div>
     <div class="field">📝 <span id="pf-desc"></span></div>
     <div class="field"><span class="loc-badge" id="pf-loc"></span></div>
-    <div id="pf-dun-badge" style="display:none;background:#E67E22;color:#fff;border-radius:8px;padding:6px 12px;font-size:.82rem;font-weight:700;margin-top:6px;">📦 Leitura de CAIXA</div>
-    <div style="margin-top:12px;">
+
+    <!-- MODO UNIDADE (EAN / SKU) -->
+    <div id="modo-unidade" style="margin-top:12px;">
       <label>Quantidade contada</label>
       <div style="display:flex;gap:8px;align-items:center;">
         <button class="btn btn-outline btn-sm" onclick="ajustarQtd(-1)">−</button>
@@ -215,6 +216,35 @@
                style="width:80px;text-align:center;font-size:1.2rem;font-weight:700;"/>
         <button class="btn btn-outline btn-sm" onclick="ajustarQtd(1)">+</button>
         <button class="btn btn-success btn-sm" onclick="confirmarItem()" style="flex:1;">✔ Confirmar</button>
+      </div>
+    </div>
+
+    <!-- MODO CAIXA (DUN) -->
+    <div id="modo-caixa" style="display:none;margin-top:12px;">
+      <div style="background:#FEF3E2;border:2px solid #E67E22;border-radius:10px;padding:12px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="font-size:1.3rem;">📦</span>
+          <span style="font-weight:700;color:#E67E22;font-size:.95rem;">Leitura de CAIXA</span>
+          <span id="pf-fator-badge" style="background:#E67E22;color:#fff;border-radius:20px;padding:2px 10px;font-size:.8rem;font-weight:700;">×1</span>
+        </div>
+
+        <label style="font-size:.82rem;color:#666;margin-bottom:4px;display:block;">Nº de caixas</label>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+          <button class="btn btn-outline btn-sm" onclick="ajustarCaixas(-1)">−</button>
+          <input type="number" id="caixas-input" min="1" value="1"
+                 style="width:70px;text-align:center;font-size:1.2rem;font-weight:700;"
+                 oninput="atualizarConversao()"/>
+          <button class="btn btn-outline btn-sm" onclick="ajustarCaixas(1)">+</button>
+        </div>
+
+        <div style="background:#fff;border-radius:8px;padding:10px;text-align:center;margin-bottom:10px;">
+          <span id="formula-caixas" style="font-size:1rem;color:#555;"></span>
+          <span style="margin:0 8px;color:#ccc;">→</span>
+          <span id="resultado-caixas" style="font-size:1.5rem;font-weight:900;color:#1B4F72;"></span>
+          <span style="font-size:.8rem;color:#888;margin-left:4px;">unidades</span>
+        </div>
+
+        <button class="btn btn-success" onclick="confirmarItem()" style="width:100%;">✔ Confirmar</button>
       </div>
     </div>
   </div>
@@ -431,21 +461,25 @@ function processarCodigo(codigo) {
   document.getElementById('pf-sku').textContent  = prod.sku;
   document.getElementById('pf-desc').textContent = prod.desc;
   document.getElementById('pf-loc').textContent  = '📍 ' + (prod.loc || '—');
-  document.getElementById('qtd-input').value = isDUN ? fator : 0;
 
-  // Badge de caixa/DUN
-  const dunBadge = document.getElementById('pf-dun-badge');
   if (isDUN) {
-    dunBadge.textContent = '📦 Leitura de CAIXA — ×' + fator + ' unidades';
-    dunBadge.style.display = 'block';
+    document.getElementById('modo-unidade').style.display = 'none';
+    document.getElementById('modo-caixa').style.display   = 'block';
+    document.getElementById('pf-fator-badge').textContent = '×' + fator;
+    document.getElementById('caixas-input').value = 1;
+    atualizarConversao();
+    document.getElementById('scan-status').textContent = '📦 Caixa encontrada! ×' + fator;
+    document.getElementById('caixas-input').focus();
   } else {
-    dunBadge.style.display = 'none';
+    document.getElementById('modo-unidade').style.display = 'block';
+    document.getElementById('modo-caixa').style.display   = 'none';
+    document.getElementById('qtd-input').value = 0;
+    document.getElementById('scan-status').textContent = '✔ Produto encontrado!';
+    document.getElementById('qtd-input').focus();
   }
 
   document.getElementById('prod-found').style.display = 'block';
-  document.getElementById('scan-status').textContent  = isDUN ? '📦 Caixa encontrada! ×' + fator : '✔ Produto encontrado!';
   document.getElementById('scan-status').className    = 'scan-status ok';
-  document.getElementById('qtd-input').focus();
 }
 
 function buscarProduto(codigo) {
@@ -459,14 +493,34 @@ function buscarProduto(codigo) {
 
 function ajustarQtd(delta) {
   const inp = document.getElementById('qtd-input');
-  const fator = (isDUN && produtoAtual && produtoAtual.fator && Number(produtoAtual.fator) > 1)
-    ? Number(produtoAtual.fator) : 1;
-  inp.value = Math.max(0, parseInt(inp.value || 0) + (delta * fator));
+  inp.value = Math.max(0, parseInt(inp.value || 0) + delta);
+}
+
+function ajustarCaixas(delta) {
+  const inp = document.getElementById('caixas-input');
+  inp.value = Math.max(1, parseInt(inp.value || 1) + delta);
+  atualizarConversao();
+}
+
+function atualizarConversao() {
+  if (!produtoAtual) return;
+  const fator  = Number(produtoAtual.fator) || 1;
+  const caixas = parseInt(document.getElementById('caixas-input').value) || 1;
+  const total  = caixas * fator;
+  document.getElementById('formula-caixas').textContent  = caixas + ' × ' + fator;
+  document.getElementById('resultado-caixas').textContent = total;
 }
 
 function confirmarItem() {
   if (!produtoAtual) return;
-  const qtd = parseInt(document.getElementById('qtd-input').value) || 0;
+  let qtd;
+  if (isDUN) {
+    const fator  = Number(produtoAtual.fator) || 1;
+    const caixas = parseInt(document.getElementById('caixas-input').value) || 1;
+    qtd = caixas * fator;
+  } else {
+    qtd = parseInt(document.getElementById('qtd-input').value) || 0;
+  }
   const sku = produtoAtual.sku;
 
   // Verificar se já existe — atualiza qtd1
@@ -479,8 +533,9 @@ function confirmarItem() {
 
   produtoAtual = null;
   isDUN = false;
-  document.getElementById('prod-found').style.display = 'none';
-  document.getElementById('pf-dun-badge').style.display = 'none';
+  document.getElementById('prod-found').style.display   = 'none';
+  document.getElementById('modo-unidade').style.display = 'block';
+  document.getElementById('modo-caixa').style.display   = 'none';
   document.getElementById('scan-status').textContent = 'Aponte a câmera para o próximo produto';
   document.getElementById('scan-status').className = 'scan-status info';
   renderLista();
