@@ -563,9 +563,12 @@ function confirmarItem() {
   // Verificar se já existe — atualiza qtd1
   const exist = itens.find(i => i.sku === sku);
   if (exist) {
-    exist.qtd1 = qtd;
+    exist.qtd1  = qtd;
+    exist.isDUN = isDUN;
+    exist.fator = isDUN ? (Number(produtoAtual.fator) || 1) : 1;
   } else {
-    itens.push({ sku, desc: produtoAtual.desc, loc: produtoAtual.loc, qtd1: qtd, qtd2: null });
+    itens.push({ sku, desc: produtoAtual.desc, loc: produtoAtual.loc, qtd1: qtd, qtd2: null,
+                 isDUN: isDUN, fator: isDUN ? (Number(produtoAtual.fator) || 1) : 1 });
   }
 
   produtoAtual = null;
@@ -637,7 +640,10 @@ async function finalizarContagem1() {
     if (result.error) throw new Error(result.error);
 
     // Verificar divergentes retornados pelo script
-    divergentes = result.divergentes || [];
+    divergentes = (result.divergentes || []).map(d => {
+      const itemLocal = itens.find(i => i.sku === d.sku);
+      return { ...d, isDUN: itemLocal ? itemLocal.isDUN : false, fator: itemLocal ? itemLocal.fator : 1 };
+    });
     if (divergentes.length > 0) {
       mostrarRecontagem();
     } else {
@@ -662,6 +668,51 @@ function mostrarRecontagem() {
     const card = document.createElement('div');
     card.className = 'card';
     card.style.marginBottom = '4px';
+
+    const skuSafe = d.sku;
+    const fator   = d.isDUN ? (Number(d.fator) || 1) : 1;
+
+    const modoUnidade = `
+      <label>2ª Contagem</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-outline btn-sm" onclick="ajustarRec('${skuSafe}',-1)">−</button>
+        <input type="number" id="rec-${skuSafe}" min="0" value="${d.qtd1}"
+               style="width:80px;text-align:center;font-size:1.1rem;font-weight:700;"/>
+        <button class="btn btn-outline btn-sm" onclick="ajustarRec('${skuSafe}',1)">+</button>
+      </div>`;
+
+    const modoCaixa = `
+      <div style="background:#FEF3E2;border:2px solid #E67E22;border-radius:10px;padding:12px;margin-top:4px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span>📦</span>
+          <span style="font-weight:700;color:#E67E22;font-size:.9rem;">2ª Contagem — CAIXA</span>
+          <span style="background:#E67E22;color:#fff;border-radius:20px;padding:2px 8px;font-size:.78rem;font-weight:700;">×${fator}</span>
+        </div>
+        <label style="font-size:.82rem;color:#666;margin-bottom:4px;display:block;">Nº de caixas</label>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+          <button class="btn btn-outline btn-sm" onclick="ajustarRecCaixas('${skuSafe}',-1)">−</button>
+          <input type="number" id="rec-caixas-${skuSafe}" min="0" value="0"
+                 style="width:70px;text-align:center;font-size:1.1rem;font-weight:700;"
+                 oninput="atualizarConversaoRec('${skuSafe}')"/>
+          <button class="btn btn-outline btn-sm" onclick="ajustarRecCaixas('${skuSafe}',1)">+</button>
+        </div>
+        <div style="border-top:1px dashed #E67E22;margin-bottom:10px;"></div>
+        <label style="font-size:.82rem;color:#666;margin-bottom:4px;display:block;">Nº de itens isolados</label>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+          <button class="btn btn-outline btn-sm" onclick="ajustarRecIsolados('${skuSafe}',-1)">−</button>
+          <input type="number" id="rec-isolados-${skuSafe}" min="0" value="0"
+                 style="width:70px;text-align:center;font-size:1.1rem;font-weight:700;"
+                 oninput="atualizarConversaoRec('${skuSafe}')"/>
+          <button class="btn btn-outline btn-sm" onclick="ajustarRecIsolados('${skuSafe}',1)">+</button>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:10px;text-align:center;border:1px solid #f0d0b0;">
+          <div style="font-size:.82rem;color:#888;margin-bottom:2px;" id="rec-formula-${skuSafe}">0</div>
+          <span id="rec-resultado-${skuSafe}" style="font-size:1.6rem;font-weight:900;color:#1B4F72;">0</span>
+          <span style="font-size:.85rem;color:#888;margin-left:4px;">unidades</span>
+        </div>
+        <input type="hidden" id="rec-${skuSafe}" value="0"/>
+      </div>`;
+
     card.innerHTML = `
       <div class="prod-card" style="margin-bottom:10px;">
         <div class="field">📦 <span>${d.sku}</span>
@@ -670,13 +721,8 @@ function mostrarRecontagem() {
         <div class="field">📝 <span>${d.desc}</span></div>
         <div class="field"><span class="loc-badge">📍 ${d.loc || '—'}</span></div>
       </div>
-      <label>2ª Contagem</label>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-outline btn-sm" onclick="ajustarRec('${d.sku}',-1)">−</button>
-        <input type="number" id="rec-${d.sku}" min="0" value="${d.qtd1}"
-               style="width:80px;text-align:center;font-size:1.1rem;font-weight:700;"/>
-        <button class="btn btn-outline btn-sm" onclick="ajustarRec('${d.sku}',1)">+</button>
-      </div>`;
+      ${d.isDUN ? modoCaixa : modoUnidade}`;
+
     container.appendChild(card);
     recontagemMap[d.sku] = d;
   });
@@ -687,6 +733,41 @@ function mostrarRecontagem() {
 function ajustarRec(sku, delta) {
   const inp = document.getElementById('rec-' + sku);
   inp.value = Math.max(0, parseInt(inp.value || 0) + delta);
+}
+
+function ajustarRecCaixas(sku, delta) {
+  const inp = document.getElementById('rec-caixas-' + sku);
+  inp.value = Math.max(0, parseInt(inp.value || 0) + delta);
+  atualizarConversaoRec(sku);
+}
+
+function ajustarRecIsolados(sku, delta) {
+  const inp = document.getElementById('rec-isolados-' + sku);
+  inp.value = Math.max(0, parseInt(inp.value || 0) + delta);
+  atualizarConversaoRec(sku);
+}
+
+function atualizarConversaoRec(sku) {
+  const d        = recontagemMap[sku];
+  const fator    = d ? (Number(d.fator) || 1) : 1;
+  const caixas   = parseInt(document.getElementById('rec-caixas-'   + sku).value) || 0;
+  const isolados = parseInt(document.getElementById('rec-isolados-' + sku).value) || 0;
+  const total    = (caixas * fator) + isolados;
+
+  let formula = '';
+  if (caixas > 0 && isolados > 0) {
+    formula = '(' + caixas + ' × ' + fator + ') + ' + isolados + ' isolado' + (isolados > 1 ? 's' : '');
+  } else if (caixas > 0) {
+    formula = caixas + ' × ' + fator;
+  } else if (isolados > 0) {
+    formula = isolados + ' isolado' + (isolados > 1 ? 's' : '');
+  } else {
+    formula = '0';
+  }
+
+  document.getElementById('rec-formula-'    + sku).textContent = formula;
+  document.getElementById('rec-resultado-'  + sku).textContent = total;
+  document.getElementById('rec-'            + sku).value       = total;
 }
 
 async function finalizarRecontagem() {
