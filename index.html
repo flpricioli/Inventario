@@ -206,6 +206,7 @@
     <div class="field">📦 <span id="pf-sku"></span></div>
     <div class="field">📝 <span id="pf-desc"></span></div>
     <div class="field"><span class="loc-badge" id="pf-loc"></span></div>
+    <div id="pf-dun-badge" style="display:none;background:#E67E22;color:#fff;border-radius:8px;padding:6px 12px;font-size:.82rem;font-weight:700;margin-top:6px;">📦 Leitura de CAIXA</div>
     <div style="margin-top:12px;">
       <label>Quantidade contada</label>
       <div style="display:flex;gap:8px;align-items:center;">
@@ -307,6 +308,7 @@ let itens        = [];           // [{sku, desc, loc, qtd1, qtd2}]
 let scannerObj   = null;
 let scannerAtivo = false;
 let produtoAtual = null;
+let isDUN = false;
 let modoRecontagem = false;
 let divergentes  = [];
 let recontagemMap = {};          // sku -> input element ref
@@ -423,12 +425,25 @@ function processarCodigo(codigo) {
   }
 
   produtoAtual = prod;
+  isDUN = (String(prod.dun).trim() === String(codigo).trim());
+  const fator = (isDUN && prod.fator && Number(prod.fator) > 1) ? Number(prod.fator) : 1;
+
   document.getElementById('pf-sku').textContent  = prod.sku;
   document.getElementById('pf-desc').textContent = prod.desc;
   document.getElementById('pf-loc').textContent  = '📍 ' + (prod.loc || '—');
-  document.getElementById('qtd-input').value = 0;
+  document.getElementById('qtd-input').value = isDUN ? fator : 0;
+
+  // Badge de caixa/DUN
+  const dunBadge = document.getElementById('pf-dun-badge');
+  if (isDUN) {
+    dunBadge.textContent = '📦 Leitura de CAIXA — ×' + fator + ' unidades';
+    dunBadge.style.display = 'block';
+  } else {
+    dunBadge.style.display = 'none';
+  }
+
   document.getElementById('prod-found').style.display = 'block';
-  document.getElementById('scan-status').textContent  = '✔ Produto encontrado!';
+  document.getElementById('scan-status').textContent  = isDUN ? '📦 Caixa encontrada! ×' + fator : '✔ Produto encontrado!';
   document.getElementById('scan-status').className    = 'scan-status ok';
   document.getElementById('qtd-input').focus();
 }
@@ -444,7 +459,9 @@ function buscarProduto(codigo) {
 
 function ajustarQtd(delta) {
   const inp = document.getElementById('qtd-input');
-  inp.value = Math.max(0, parseInt(inp.value || 0) + delta);
+  const fator = (isDUN && produtoAtual && produtoAtual.fator && Number(produtoAtual.fator) > 1)
+    ? Number(produtoAtual.fator) : 1;
+  inp.value = Math.max(0, parseInt(inp.value || 0) + (delta * fator));
 }
 
 function confirmarItem() {
@@ -461,7 +478,9 @@ function confirmarItem() {
   }
 
   produtoAtual = null;
+  isDUN = false;
   document.getElementById('prod-found').style.display = 'none';
+  document.getElementById('pf-dun-badge').style.display = 'none';
   document.getElementById('scan-status').textContent = 'Aponte a câmera para o próximo produto';
   document.getElementById('scan-status').className = 'scan-status info';
   renderLista();
