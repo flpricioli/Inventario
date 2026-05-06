@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>Inventário</title>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
 <style>
   :root {
     --primary:   #1B4F72;
@@ -191,7 +191,7 @@
 <div id="screen-scan" class="screen">
   <div class="card">
     <h2 id="scan-title">📷 Leitura de Produtos</h2>
-    <div id="reader" style="width:100%;"></div>
+    <video id="reader" style="width:100%;border-radius:10px;background:#000;" playsinline muted></video>
     <div id="scan-status" class="scan-status info">Aponte a câmera para um QR Code ou código de barras</div>
 
     <!-- Input manual -->
@@ -435,22 +435,61 @@ async function iniciar() {
 // ═══════════════════════════════════════════════════════════
 // SCANNER
 // ═══════════════════════════════════════════════════════════
+// ── ZXing Scanner ──────────────────────────────────────────
+// Suporta: EAN-13, EAN-8, UPC-A, UPC-E, Code-128, ITF-14 (DUN),
+//          QR Code, Data Matrix, PDF-417 e mais
+// ───────────────────────────────────────────────────────────
+let zxingControls = null;
+
 function iniciarScanner() {
   if (scannerAtivo) return;
-  scannerObj = new Html5Qrcode("reader");
-  const config = { fps: 10, qrbox: { width: 260, height: 160 }, supportedScanTypes: [0,1] };
-  scannerObj.start({ facingMode: "environment" }, config, onScanSucesso, () => {})
-    .then(() => { scannerAtivo = true; })
-    .catch(e => {
-      document.getElementById('scan-status').textContent = '⚠ Câmera não disponível: ' + e;
-      document.getElementById('scan-status').className = 'scan-status err';
-    });
+
+  // TRY_HARDER melhora a leitura de códigos com baixa qualidade / ângulo ruim
+  const hints = new Map();
+  hints.set(ZXingBrowser.DecodeHintType.TRY_HARDER, true);
+
+  const reader = new ZXingBrowser.BrowserMultiFormatReader(hints, {
+    delayBetweenScanAttempts: 50,
+    delayBetweenScanSuccess: 1200,
+  });
+
+  const videoEl = document.getElementById('reader');
+
+  reader.decodeFromConstraints(
+    {
+      video: {
+        facingMode: 'environment',
+        width:  { ideal: 1280 },
+        height: { ideal: 720  },
+        focusMode: 'continuous',
+      }
+    },
+    videoEl,
+    (result, err, controls) => {
+      if (result) {
+        const codigo = result.getText();
+        if (!scannerAtivo) return;
+        scannerAtivo = false;       // bloqueia leituras duplas
+        controls.stop();
+        zxingControls = null;
+        processarCodigo(codigo);
+      }
+    }
+  ).then(controls => {
+    zxingControls = controls;
+    scannerAtivo  = true;
+  }).catch(e => {
+    document.getElementById('scan-status').textContent = '⚠ Câmera não disponível: ' + e;
+    document.getElementById('scan-status').className   = 'scan-status err';
+  });
 }
 
 function pararScanner() {
-  if (scannerAtivo && scannerObj) {
-    scannerObj.stop().then(() => { scannerAtivo = false; });
+  if (zxingControls) {
+    try { zxingControls.stop(); } catch(e) {}
+    zxingControls = null;
   }
+  scannerAtivo = false;
 }
 
 function onScanSucesso(codigo) {
