@@ -503,22 +503,50 @@ async function iniciarScanner() {
     return;
   }
 
-  const detector = new window.BarcodeDetector({
-    formats: ['ean_13', 'ean_8', 'qr_code', 'code_128', 'upc_a', 'code_39', 'itf']
-  });
+  // Verificar formatos suportados pelo dispositivo antes de criar o detector
+  let formatsSupported = ['ean_13', 'ean_8', 'qr_code', 'code_128', 'upc_a', 'code_39'];
+  try {
+    const supported = await window.BarcodeDetector.getSupportedFormats();
+    // Adicionar itf só se suportado (causa erro em alguns Android)
+    if (supported.includes('itf')) formatsSupported.push('itf');
+  } catch(_) {}
 
+  let detector;
+  try {
+    detector = new window.BarcodeDetector({ formats: formatsSupported });
+  } catch(e) {
+    statusEl.textContent = '⚠ Erro ao criar detector: ' + e.message;
+    statusEl.className   = 'scan-status err';
+    pararScanner();
+    return;
+  }
+
+  let frameCount = 0;
   detectorInterval = setInterval(async () => {
     if (!videoEl || videoEl.readyState < 2) return;
+    frameCount++;
+    // Feedback visual a cada 10 frames (~4s) para mostrar que está ativo
+    if (frameCount % 10 === 0) {
+      statusEl.textContent = '🔍 Buscando código... (aponte a câmera)';
+    }
     try {
       const barcodes = await detector.detect(videoEl);
       if (barcodes.length > 0) {
         const codigo = barcodes[0].rawValue;
+        statusEl.textContent = '✔ Código detectado: ' + codigo;
+        statusEl.className   = 'scan-status ok';
         clearInterval(detectorInterval);
         detectorInterval = null;
-        pararScanner();
-        processarCodigo(codigo);
+        // Pequeno delay para garantir que o feedback aparece antes de parar câmera
+        setTimeout(() => {
+          pararScanner();
+          processarCodigo(codigo);
+        }, 200);
       }
-    } catch(_) {}
+    } catch(e) {
+      // Logar erro visível para debug
+      statusEl.textContent = '⚠ Erro detector: ' + e.message;
+    }
   }, 400);
 }
 
