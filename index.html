@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>Inventário</title>
-<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+
 <style>
   :root {
     --primary:   #1B4F72;
@@ -150,6 +150,31 @@
 
   /* Config sheet URL */
   .cfg-note { font-size: .78rem; color: #888; line-height: 1.5; }
+
+  /* Overlay scanner */
+  .scanner-wrapper { position: relative; border-radius: 10px; overflow: hidden; background: #000; }
+  .scanner-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .scanner-frame {
+    width: 66%; height: 33%;
+    border: 2px solid var(--primary);
+    border-radius: 12px;
+    opacity: 0.85;
+    animation: pulse-ring 1.5s ease-in-out infinite;
+  }
+  .scanner-hint {
+    position: absolute; bottom: 10px; left: 0; right: 0;
+    text-align: center; color: #fff; font-size: .75rem;
+    background: rgba(0,0,0,0.45); padding: 4px 0;
+  }
+  @keyframes pulse-ring {
+    0%, 100% { opacity: 0.85; transform: scale(1); }
+    50%       { opacity: 0.4;  transform: scale(1.03); }
+  }
+
 </style>
 </head>
 <body>
@@ -163,7 +188,7 @@
   <div class="card">
     <h2>⚙️ Configuração</h2>
     <label>URL do Google Apps Script (Web App)</label>
-    <input type="text" id="cfg-url" placeholder="https://script.google.com/macros/s/AKfycbyd6SZA7TzDW4SnCL6w22s-3oFTYB5Dj2JSAgZjcKrEjjBm-orBTwZTSHcMyalPTAV6lw/exec" />
+    <input type="text" id="cfg-url" placeholder="https://script.google.com/macros/s/..." />
     <p class="cfg-note" style="margin-top:8px;">
       Cole aqui a URL gerada após publicar o Apps Script como Web App.<br>
       Esta URL é salva localmente no dispositivo.
@@ -191,7 +216,13 @@
 <div id="screen-scan" class="screen">
   <div class="card">
     <h2 id="scan-title">📷 Leitura de Produtos</h2>
-    <video id="reader" style="width:100%;border-radius:10px;background:#000;" playsinline muted></video>
+    <div class="scanner-wrapper">
+      <video id="reader" style="width:100%;display:block;" playsinline muted></video>
+      <div class="scanner-overlay">
+        <div class="scanner-frame"></div>
+      </div>
+      <div class="scanner-hint">Aponte para o código de barras ou QR Code</div>
+    </div>
     <div id="scan-status" class="scan-status info">Aponte a câmera para um QR Code ou código de barras</div>
 
     <!-- Input manual -->
@@ -435,11 +466,9 @@ async function iniciar() {
 // ═══════════════════════════════════════════════════════════
 // SCANNER
 // ═══════════════════════════════════════════════════════════
-// ── ZXing Scanner ──────────────────────────────────────────
-// Suporta: EAN-13, EAN-8, UPC-A, UPC-E, Code-128, ITF-14 (DUN),
-//          QR Code, Data Matrix, PDF-417 e mais
-// ───────────────────────────────────────────────────────────
-let zxingControls = null;
+// ── BarcodeDetector Scanner ────────────────────────────────
+let detectorInterval = null;
+let scanStream       = null;
 
 async function iniciarScanner() {
   if (scannerAtivo) return;
@@ -447,76 +476,57 @@ async function iniciarScanner() {
   const statusEl = document.getElementById('scan-status');
   const videoEl  = document.getElementById('reader');
 
-  // Passo 1: pedir permissão explicitamente e obter stream
-  let stream;
+  // Pedir permissão e obter stream
   try {
-    statusEl.textContent  = '🔐 Aguardando permissão da câmera...';
-    statusEl.className    = 'scan-status info';
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width:  { ideal: 1280 },
-        height: { ideal: 720  },
-      }
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
-  } catch (e) {
-    statusEl.textContent = '⚠ Permissão de câmera negada: ' + e.message;
+  } catch(err) {
+    statusEl.textContent = '⚠ Câmera não disponível: ' + (err.message || 'Verifique as permissões do navegador.');
     statusEl.className   = 'scan-status err';
     return;
   }
 
-  // Passo 2: exibir o preview manualmente enquanto ZXing processa
-  videoEl.srcObject = stream;
+  videoEl.srcObject = scanStream;
   videoEl.setAttribute('playsinline', true);
   videoEl.muted = true;
   await videoEl.play().catch(() => {});
 
-  statusEl.textContent = 'Aponte a câmera para o código';
+  statusEl.textContent = 'Aponte para o código de barras ou QR Code';
   statusEl.className   = 'scan-status info';
+  scannerAtivo         = true;
 
-  // Passo 3: iniciar ZXing com TRY_HARDER sobre a stream já ativa
-  const hints = new Map();
-  hints.set(ZXingBrowser.DecodeHintType.TRY_HARDER, true);
+  if (!('BarcodeDetector' in window)) {
+    statusEl.textContent = '⚠ BarcodeDetector não suportado. Use Chrome/Android ou digite manualmente.';
+    statusEl.className   = 'scan-status err';
+    pararScanner();
+    return;
+  }
 
-  const reader = new ZXingBrowser.BrowserMultiFormatReader(hints, {
-    delayBetweenScanAttempts: 50,
-    delayBetweenScanSuccess: 1200,
+  const detector = new window.BarcodeDetector({
+    formats: ['ean_13', 'ean_8', 'qr_code', 'code_128', 'upc_a', 'code_39', 'itf']
   });
 
-  try {
-    const controls = await reader.decodeFromStream(stream, videoEl,
-      (result, err, ctrl) => {
-        if (result) {
-          const codigo = result.getText();
-          if (!scannerAtivo) return;
-          scannerAtivo = false;
-          ctrl.stop();
-          stream.getTracks().forEach(t => t.stop());
-          zxingControls = null;
-          processarCodigo(codigo);
-        }
+  detectorInterval = setInterval(async () => {
+    if (!videoEl || videoEl.readyState < 2) return;
+    try {
+      const barcodes = await detector.detect(videoEl);
+      if (barcodes.length > 0) {
+        const codigo = barcodes[0].rawValue;
+        clearInterval(detectorInterval);
+        detectorInterval = null;
+        pararScanner();
+        processarCodigo(codigo);
       }
-    );
-    zxingControls = controls;
-    scannerAtivo  = true;
-  } catch(e) {
-    stream.getTracks().forEach(t => t.stop());
-    statusEl.textContent = '⚠ Erro ao iniciar scanner: ' + e.message;
-    statusEl.className   = 'scan-status err';
-  }
+    } catch(_) {}
+  }, 400);
 }
 
 function pararScanner() {
-  if (zxingControls) {
-    try { zxingControls.stop(); } catch(e) {}
-    zxingControls = null;
-  }
-  // Parar tracks da câmera para apagar o ícone de câmera ativa no browser
+  if (detectorInterval) { clearInterval(detectorInterval); detectorInterval = null; }
+  if (scanStream)       { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
   const videoEl = document.getElementById('reader');
-  if (videoEl && videoEl.srcObject) {
-    videoEl.srcObject.getTracks().forEach(t => t.stop());
-    videoEl.srcObject = null;
-  }
+  if (videoEl)          { videoEl.srcObject = null; }
   scannerAtivo = false;
 }
 
