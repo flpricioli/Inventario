@@ -671,9 +671,12 @@ function confirmarItem() {
     exist.qtd1  = qtd;
     exist.isDUN = isDUN;
     exist.fator = isDUN ? (Number(produtoAtual.fator) || 1) : 1;
+    exist.previo = Number(produtoAtual.previo) || 0;
   } else {
+    const previoItem = Number(produtoAtual.previo) || 0;
     itens.push({ sku, desc: produtoAtual.desc, loc: produtoAtual.loc, qtd1: qtd, qtd2: null,
-                 isDUN: isDUN, fator: isDUN ? (Number(produtoAtual.fator) || 1) : 1 });
+                 isDUN: isDUN, fator: isDUN ? (Number(produtoAtual.fator) || 1) : 1,
+                 previo: previoItem });
   }
 
   produtoAtual = null;
@@ -702,7 +705,10 @@ function renderLista() {
         <div class="sku">${it.sku}</div>
         <div class="desc">${it.desc}</div>
       </div>
-      <div class="qty">${it.qtd1}</div>
+      <div style="text-align:right;">
+        <div class="qty">${it.qtd1}</div>
+        ${(it.previo > 0) ? '<div style="font-size:.72rem;color:#888;margin-top:2px;">+' + it.previo + ' prévio</div>' : ''}
+      </div>
       <button class="del-btn" onclick="removerItem(${realIdx})" title="Remover">✕</button>`;
     ul.appendChild(div);
   });
@@ -747,7 +753,9 @@ async function finalizarContagem1() {
     // Verificar divergentes retornados pelo script
     divergentes = (result.divergentes || []).map(d => {
       const itemLocal = itens.find(i => i.sku === d.sku);
-      return { ...d, isDUN: itemLocal ? itemLocal.isDUN : false, fator: itemLocal ? itemLocal.fator : 1 };
+      const previoVal = itemLocal ? (itemLocal.previo || 0) : (d.previo || 0);
+      return { ...d, isDUN: itemLocal ? itemLocal.isDUN : false, fator: itemLocal ? itemLocal.fator : 1,
+               previo: previoVal, qtd1App: d.qtd1 - previoVal };
     });
     if (divergentes.length > 0) {
       mostrarRecontagem();
@@ -778,10 +786,11 @@ function mostrarRecontagem() {
     const fator   = d.isDUN ? (Number(d.fator) || 1) : 1;
 
     const modoUnidade = `
-      <label>2ª Contagem</label>
+      <label>2ª Contagem <span style="font-size:.78rem;color:#888;">(informe apenas o que contar agora)</span></label>
+      ${d.previo > 0 ? '<div style="background:#EAF4FB;border-radius:6px;padding:5px 10px;font-size:.8rem;color:#1B4F72;margin-bottom:6px;">📋 Prévio já lançado: <b>' + d.previo + '</b> unidades</div>' : ''}
       <div style="display:flex;gap:8px;align-items:center;">
         <button class="btn btn-outline btn-sm" onclick="ajustarRec('${skuSafe}',-1)">−</button>
-        <input type="number" id="rec-${skuSafe}" min="0" value="${d.qtd1}"
+        <input type="number" id="rec-${skuSafe}" min="0" value="${d.qtd1App !== undefined ? d.qtd1App : (d.qtd1 - (d.previo||0))}"
                style="width:80px;text-align:center;font-size:1.1rem;font-weight:700;"/>
         <button class="btn btn-outline btn-sm" onclick="ajustarRec('${skuSafe}',1)">+</button>
       </div>`;
@@ -793,6 +802,7 @@ function mostrarRecontagem() {
           <span style="font-weight:700;color:#E67E22;font-size:.9rem;">2ª Contagem — CAIXA</span>
           <span style="background:#E67E22;color:#fff;border-radius:20px;padding:2px 8px;font-size:.78rem;font-weight:700;">×${fator}</span>
         </div>
+        ${d.previo > 0 ? '<div style="background:#FEF3E2;border-radius:6px;padding:5px 10px;font-size:.8rem;color:#E67E22;margin-bottom:8px;">📋 Prévio já lançado: <b>' + d.previo + '</b> unidades</div>' : ''}
         <label style="font-size:.82rem;color:#666;margin-bottom:4px;display:block;">Nº de caixas</label>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
           <button class="btn btn-outline btn-sm" onclick="ajustarRecCaixas('${skuSafe}',-1)">−</button>
